@@ -1,0 +1,49 @@
+name: link-audit
+
+services:
+  api:
+    build:
+      context: ./backend
+    environment:
+      PORT: "8080"
+      AUDIT_DB: /data/audits.db
+    volumes:
+      - audit-data:/data
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  # One-shot verifier: rule tests -> frontend build check -> live API/HTTP
+  # smoke (including archive-cycle closure). Exit code is the verdict.
+  #   docker compose build verify
+  #   docker compose up --abort-on-container-exit --exit-code-from verify
+  verify:
+    build:
+      context: .
+      dockerfile: verify/Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    environment:
+      API_BASE: http://api:8080
+      WEB_BASE: http://web:80
+    volumes:
+      - ./:/workspace
+      - npm-cache:/root/.npm
+    restart: "no"
+
+volumes:
+  audit-data:
+  npm-cache:
